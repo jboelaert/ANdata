@@ -1,0 +1,71 @@
+{
+  "catvars": [
+    "genre",
+    "ProfSigni",
+    "tendance.pol",
+    "groupe.pol",
+    "cabcollab",
+    "elu.local",
+    "primodep"
+  ],
+
+  "numvars": [
+    "part.femmes",
+    "age",
+    "part.pol",
+    "part.cabcollab",
+    "part.pcs.123",
+    "part.pcs.456",
+    "part.elu.local",
+    "part.mandat",
+    "part.primos",
+    "duree.pol"
+  ],
+
+  "varnames": {
+    "genre":          "Genre",
+    "groupe.pol":     "Groupe politique",
+    "tendance.pol":   "Tendance politique",
+    "ProfSigni":      "Profession significative",
+    "elu.local":      "Ancien élu local",
+    "cabcollab":      "Ancien collaborateur politique",
+    "primodep":       "Primo-député",
+    "age":            "Age en début de législature",
+    "duree.pol":      "Années en politique",
+    "part.pol":       "Part de vie en politique",
+    "part.mandat":    "Part de vie en mandat électif",
+    "part.pcs.123":   "Part de PCS 1-2-3",
+    "part.pcs.456":   "Part de PCS 4-5-6",
+    "part.cabcollab": "Part d'anciens collaborateurs politiques",
+    "part.primos":    "Part de primo-députés",
+    "part.elu.local": "Part d'anciens élus locaux",
+    "part.femmes":    "Part de femmes"
+  },
+
+  "vars_type": {
+    "pourcentages":   "%",
+    "effectifs":      "int",
+    "age":            "float",
+    "duree.pol":      "float",
+    "part.cabcollab": "part",
+    "part.pcs.123":   "part",
+    "part.pcs.456":   "part",
+    "part.pol":       "part",
+    "part.mandat":    "part",
+    "part.primos":    "part",
+    "part.elu.local": "part",
+    "part.femmes":    "part"
+  },
+
+  "cat_levels": {
+    "groupe.pol": [
+      "LFI", "Communiste", "Écologiste", "Socialiste", "Radical", "LIOT",
+      "LREM/RE", "UDF/MODEM/UDI/NC/Dém", "LC/HOR", "RPR/UMP/LR", "UDR", "RN",
+      "Non-inscrits", "Total"
+    ],
+    "tendance.pol": [
+      "COM/LFI", "ECO/SOC/RAD", "Centre", "Droite", "Extrême-droite",
+      "Non-inscrits", "Total"
+    ]
+  }
+}

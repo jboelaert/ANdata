@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Assemblée nationale – Statistiques</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+<style>
+  body { font-size: 0.88rem; }
+  #sidebar {
+    background: #f8f9fa;
+    min-height: 100vh;
+    padding: 1rem 0.9rem;
+    border-right: 1px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+  .table th, .table td { text-align: right; white-space: nowrap; padding: 0.25rem 0.5rem; }
+  .table th:first-child, .table td:first-child { text-align: left; }
+  .table tr:last-child td { font-weight: 600; }
+  #legis { height: auto; }
+  #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex;
+    align-items: center; justify-content: center; z-index: 9999; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<div id="loading">Chargement des données…</div>
+
+<div class="container-fluid">
+<div class="row g-0">
+
+  <!-- SIDEBAR -->
+  <div class="col-md-3 col-xl-2" id="sidebar">
+    <div class="mb-2">
+      <label class="form-label mb-1 fw-semibold">Statistique</label>
+      <select id="varNum" class="form-select form-select-sm"></select>
+    </div>
+
+    <div id="numStatDiv" class="mb-2 ps-1" style="display:none">
+      <div class="form-check form-check-sm">
+        <input class="form-check-input" type="radio" name="numStat" id="rMean" value="mean" checked>
+        <label class="form-check-label" for="rMean">Moyenne</label>
+      </div>
+      <div class="form-check form-check-sm">
+        <input class="form-check-input" type="radio" name="numStat" id="rMedian" value="median">
+        <label class="form-check-label" for="rMedian">Médiane</label>
+      </div>
+    </div>
+
+    <div class="mb-1">
+      <label class="form-label mb-1 fw-semibold">Ventilation par</label>
+      <select id="varCat1" class="form-select form-select-sm"></select>
+    </div>
+    <div class="text-center mb-1">
+      <button class="btn btn-sm btn-link p-0 text-decoration-none" id="switchCats" title="Permuter les deux variables">&#x21D5;</button>
+    </div>
+    <div class="mb-3">
+      <select id="varCat2" class="form-select form-select-sm"></select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label mb-1 fw-semibold">Législatures</label>
+      <select id="legis" class="form-select form-select-sm" multiple></select>
+      <div class="d-flex gap-2 mt-1">
+        <button class="btn btn-link btn-sm p-0 text-decoration-none" id="selectAllLegis">tout</button>
+        <button class="btn btn-link btn-sm p-0 text-decoration-none" id="deselectAllLegis">aucun</button>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="transpose">
+        <label class="form-check-label" for="transpose">Transposer</label>
+      </div>
+    </div>
+
+    <button class="btn btn-sm btn-outline-secondary w-100" id="dlTable">&#x2B07; Tableau (csv)</button>
+  </div>
+
+  <!-- MAIN -->
+  <div class="col-md-9 col-xl-10 p-3">
+    <ul class="nav nav-tabs mb-2">
+      <li class="nav-item">
+        <button class="nav-link active" id="tabGraphBtn">Graphiques</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="tabTableBtn">Tableaux</button>
+      </li>
+    </ul>
+
+    <h5 id="contentTitle" class="mb-2 text-secondary"></h5>
+
+    <div id="graphPanel"></div>
+    <div id="tablePanel" style="display:none"></div>
+
+    <div id="facetFilterPanel" class="mt-2 p-2 rounded" style="display:none; background:#f8f9fa; border:1px solid #dee2e6">
+      <div class="d-flex align-items-center gap-3 mb-1">
+        <small class="fw-semibold text-muted">Facettes visibles :</small>
+        <button class="btn btn-link btn-sm p-0 text-decoration-none" id="facetAll">tout</button>
+        <button class="btn btn-link btn-sm p-0 text-decoration-none" id="facetNone">aucun</button>
+      </div>
+      <div id="facetCheckboxes" class="d-flex flex-wrap gap-2"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+// Populated from config.json at startup
+let CATVARS    = [];
+let NUMVARS    = [];
+let VARNAMES   = {};
+let VARS_TYPE  = {};
+let CAT_LEVELS = {};
+
+const CAT_STATS = ["pourcentages", "effectifs"];
+
+// Okabe-Ito colorblind-safe palette (first 8), extended for up to 15 categories.
+// Safe for deuteranopia, protanopia and tritanopia when combined with shapes.
+const COLORS = [
+  "#E69F00",  // orange
+  "#56B4E9",  // sky blue
+  "#009E73",  // bluish green
+  "#0072B2",  // blue
+  "#D55E00",  // vermillion
+  "#CC79A7",  // reddish purple
+  "#999999",  // grey
+  "#000000",  // black
+  "#882255",  // wine
+  "#44AA99",  // teal
+  "#DDCC77",  // sand
+  "#117733",  // dark green
+  "#AA4499",  // purple
+  "#332288",  // indigo
+  "#88CCEE",  // light blue
+];
+const MARKER_SIZE = 10;
+
+// Shapes chosen to stay distinct at small sizes; open variants alternate with filled.
+const MARKERS = [
+  "circle",           "square",           "diamond",
+  "triangle-up",      "triangle-down",    "pentagon",
+  "circle-open",      "square-open",      "diamond-open",
+  "triangle-up-open", "triangle-down-open","hexagon",
+  "star",             "cross",            "star-open"
+];
+
+// ============================================================
+// DATA
+// ============================================================
+
+let datNum0 = [];
+let datCat1 = {};
+let datCat2 = {};
+let allLegis = [];
+
+let hiddenFacets = new Set();  // cat2 values currently hidden
+let lastFacetVar = null;       // tracks which cat2 variable the filter was built for
+let lastCat2Vals = [];
+
+function parseCSV(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      download: true,
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: r => resolve(r.data),
+      error: e => reject(e)
+    });
+  });
+}
+
+async function loadAllData() {
+  // Config must be loaded first — CATVARS/NUMVARS drive which CSVs to fetch
+  const cfg = await fetch("config.json").then(r => r.json());
+  CATVARS    = cfg.catvars;
+  NUMVARS    = cfg.numvars;
+  VARNAMES   = cfg.varnames;
+  VARS_TYPE  = cfg.vars_type;
+  CAT_LEVELS = cfg.cat_levels || {};
+
+  const tasks = [];
+
+  tasks.push(parseCSV("data/tab_num0.csv").then(d => { datNum0 = d; }));
+
+  for (const cat of CATVARS) {
+    const c = cat;
+    tasks.push(parseCSV(`data/tab_cat1_${c}.csv`).then(d => { datCat1[c] = d; }));
+  }
+
+  for (const cat1 of CATVARS) {
+    datCat2[cat1] = {};
+    for (const cat2 of CATVARS) {
+      const c1 = cat1, c2 = cat2;
+      tasks.push(parseCSV(`data/tab_cat2_${c1}_${c2}.csv`).then(d => { datCat2[c1][c2] = d; }));
+    }
+  }
+
+  await Promise.all(tasks);
+  allLegis = [...new Set(datNum0.map(r => r["legis.annee"]))].sort((a, b) => a - b);
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function getMode() {
+  const c1 = el("varCat1").value;
+  const c2 = el("varCat2").value;
+  return "cat" + (2 - [c1, c2].filter(v => v === "Total").length);
+}
+
+function getSelectedLegis() {
+  return Array.from(el("legis").selectedOptions)
+    .map(o => +o.value)
+    .sort((a, b) => a - b);
+}
+
+function getNumStat() {
+  return document.querySelector('input[name="numStat"]:checked')?.value || "mean";
+}
+
+function el(id) { return document.getElementById(id); }
+
+function formatCell(val, type) {
+  if (val === null || val === undefined) return "\u2013";
+  const n = parseFloat(val);
+  if (isNaN(n)) return "\u2013";
+  if (type === "part" || type === "%") return n.toFixed(1) + "\u00a0%";
+  if (type === "float") return n.toFixed(1);
+  return String(Math.round(n)); // int
+}
+
+// Return unique values of data[cat], ordered:
+// - cat_levels order if defined (Total already at end in those lists)
+// - otherwise alphabetical, Total last
+function orderedVals(cat, data) {
+  const seen = new Set();
+  data.forEach(r => { if (r[cat] !== null && r[cat] !== undefined) seen.add(String(r[cat])); });
+  const vals = [...seen];
+
+  if (CAT_LEVELS[cat]) {
+    vals.sort((a, b) => {
+      const ia = CAT_LEVELS[cat].indexOf(a);
+      const ib = CAT_LEVELS[cat].indexOf(b);
+      return (ia === -1 ? 9999 : ia) - (ib === -1 ? 9999 : ib) || a.localeCompare(b, "fr");
+    });
+  } else {
+    const nonTotal = vals.filter(v => v !== "Total").sort((a, b) => a.localeCompare(b, "fr"));
+    const hasTotal = vals.includes("Total");
+    return hasTotal ? [...nonTotal, "Total"] : nonTotal;
+  }
+  return vals;
+}
+
+function findRow(data, catKey, catVal, legis) {
+  return data.find(r => String(r[catKey]) === catVal && r["legis.annee"] === legis);
+}
+
+function findRow2(data, k1, v1, k2, v2, legis) {
+  return data.find(r => String(r[k1]) === v1 && String(r[k2]) === v2 && r["legis.annee"] === legis);
+}
+
+// ============================================================
+// TITLE
+// ============================================================
+
+function computeTitle() {
+  const varNum  = el("varNum").value;
+  const numStat = getNumStat();
+  const cat1    = el("varCat1").value;
+  const cat2    = el("varCat2").value;
+  const mode    = getMode();
+
+  let t;
+  if (CAT_STATS.includes(varNum)) {
+    t = varNum === "pourcentages" ? "Pourcentages" : "Effectifs";
+  } else {
+    const statLbl = numStat === "mean" ? "Moyenne" : "Médiane";
+    t = `${VARNAMES[varNum]} (${statLbl}),`;
+  }
+
+  if (mode === "cat0") {
+    t += " ensemble des députés";
+  } else if (mode === "cat1") {
+    const cat = cat1 === "Total" ? cat2 : cat1;
+    t += ` par ${VARNAMES[cat]}`;
+  } else {
+    if (CAT_STATS.includes(varNum)) {
+      t += ` de ${VARNAMES[cat1]}, par ${VARNAMES[cat2]}`;
+    } else {
+      t += ` par ${VARNAMES[cat1]} et ${VARNAMES[cat2]}`;
+    }
+  }
+  return t;
+}
+
+// ============================================================
+// TABLE RENDERING
+// ============================================================
+
+function makeTable(colHeaders, rowData, rowLabels) {
+  // colHeaders : string[]
+  // rowData    : string[][] (rows × cols)
+  // rowLabels  : string[] | null  (if null, no row-label column)
+  const tbl = document.createElement("table");
+  tbl.className = "table table-sm table-bordered table-hover align-middle";
+
+  // thead
+  const thead = tbl.createTHead();
+  const hrow = thead.insertRow();
+  if (rowLabels) hrow.insertCell().outerHTML = "<th></th>";
+  colHeaders.forEach(h => { hrow.insertCell().outerHTML = `<th>${h}</th>`; });
+
+  // tbody
+  const tbody = tbl.createTBody();
+  rowData.forEach((row, i) => {
+    const tr = tbody.insertRow();
+    if (rowLabels) {
+      const td = tr.insertCell();
+      td.textContent = rowLabels[i];
+      if (rowLabels[i] === "Total") td.style.fontWeight = "700";
+    }
+    row.forEach(cell => { tr.insertCell().textContent = cell; });
+  });
+
+  return tbl;
+}
+
+function renderTable() {
+  const panel   = el("tablePanel");
+  panel.innerHTML = "";
+
+  const varNum   = el("varNum").value;
+  const numStat  = getNumStat();
+  const cat1     = el("varCat1").value;
+  const cat2     = el("varCat2").value;
+  const mode     = getMode();
+  const legis    = getSelectedLegis();
+  const transpos = el("transpose").checked;
+  const type     = VARS_TYPE[varNum] || "float";
+  const isCat    = CAT_STATS.includes(varNum);
+  const numCol   = isCat ? varNum : `${numStat}_${varNum}`;
+
+  if (legis.length === 0) {
+    panel.innerHTML = '<p class="text-warning mt-2">Veuillez choisir au moins une législature.</p>';
+    return;
+  }
+
+  // ---- cat0 ----
+  if (mode === "cat0") {
+    const vals = legis.map(l => {
+      const r = datNum0.find(r => r["legis.annee"] === l);
+      return r ? r[numCol] : null;
+    });
+    const fmt = vals.map(v => formatCell(v, type));
+
+    const wrap = document.createElement("div");
+    wrap.className = "table-responsive";
+    if (!transpos) {
+      wrap.appendChild(makeTable(legis.map(String), [fmt], null));
+    } else {
+      wrap.appendChild(makeTable(["Valeur"], fmt.map(v => [v]), legis.map(String)));
+    }
+    panel.appendChild(wrap);
+    return;
+  }
+
+  // ---- cat1 ----
+  if (mode === "cat1") {
+    const cat    = cat1 === "Total" ? cat2 : cat1;
+    const data   = datCat1[cat];
+    const subset = data.filter(r => legis.includes(r["legis.annee"]));
+    const rows   = orderedVals(cat, subset);
+
+    const matrix = rows.map(rv =>
+      legis.map(l => {
+        const r = findRow(data, cat, rv, l);
+        if (!r) return null;
+        if (!isCat && r["effectifs"] === 0) return null;
+        return r[numCol];
+      })
+    );
+    const fmt = matrix.map(row => row.map(v => formatCell(v, type)));
+
+    const wrap = document.createElement("div");
+    wrap.className = "table-responsive";
+    if (!transpos) {
+      wrap.appendChild(makeTable(legis.map(String), fmt, rows));
+    } else {
+      const t = legis.map((_, li) => rows.map((_, ri) => fmt[ri][li]));
+      wrap.appendChild(makeTable(rows, t, legis.map(String)));
+    }
+    panel.appendChild(wrap);
+    return;
+  }
+
+  // ---- cat2 ----
+  const data = datCat2[cat1][cat2];
+  legis.forEach(l => {
+    const legisData = data.filter(r => r["legis.annee"] === l);
+    const r1 = orderedVals(cat1, legisData);
+    const r2 = orderedVals(cat2, legisData);
+
+    const matrix = r1.map(v1 =>
+      r2.map(v2 => {
+        const r = findRow2(data, cat1, v1, cat2, v2, l);
+        if (!r) return null;
+        if (!isCat && r["effectifs"] === 0) return null;
+        return r[numCol];
+      })
+    );
+    const fmt = matrix.map(row => row.map(v => formatCell(v, type)));
+
+    const h = document.createElement("h6");
+    h.className = "mt-3 mb-1 fw-bold";
+    h.textContent = String(l);
+    panel.appendChild(h);
+
+    const wrap = document.createElement("div");
+    wrap.className = "table-responsive mb-3";
+    if (!transpos) {
+      wrap.appendChild(makeTable(r2, fmt, r1));
+    } else {
+      const t = r2.map((_, ci) => r1.map((_, ri) => fmt[ri][ci]));
+      wrap.appendChild(makeTable(r1, t, r2));
+    }
+    panel.appendChild(wrap);
+  });
+}
+
+// ============================================================
+// FACET FILTER
+// ============================================================
+
+function buildFacetFilter(allVals, cat2Var) {
+  // Reset when the facet variable changes
+  if (cat2Var !== lastFacetVar) {
+    hiddenFacets.clear();
+    lastFacetVar = cat2Var;
+  }
+  lastCat2Vals = allVals;
+
+  const container = el("facetCheckboxes");
+  container.innerHTML = "";
+  allVals.forEach(val => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:4px;cursor:pointer;" +
+      "background:#fff;border:1px solid #ced4da;border-radius:4px;padding:2px 8px;font-size:0.82rem;";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "form-check-input mt-0";
+    cb.checked = !hiddenFacets.has(val);
+    cb.addEventListener("change", () => {
+      if (cb.checked) hiddenFacets.delete(val); else hiddenFacets.add(val);
+      renderGraph();
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode("\u00a0" + val));
+    container.appendChild(label);
+  });
+
+  el("facetFilterPanel").style.display = "";
+}
+
+// ============================================================
+// GRAPH RENDERING
+// ============================================================
+
+function renderGraph() {
+  const panel  = el("graphPanel");
+  panel.innerHTML = "";
+
+  const varNum  = el("varNum").value;
+  const numStat = getNumStat();
+  const cat1    = el("varCat1").value;
+  const cat2    = el("varCat2").value;
+  const mode    = getMode();
+  const legis   = getSelectedLegis();
+  const isCat   = CAT_STATS.includes(varNum);
+  const numCol  = isCat ? varNum : `${numStat}_${varNum}`;
+
+  if (legis.length === 0) return;
+
+  el("facetFilterPanel").style.display = "none"; // shown only in cat2 mode
+
+  const baseLayout = {
+    xaxis: { title: "" },
+    yaxis: { title: "" },
+    paper_bgcolor: "#fff",
+    plot_bgcolor: "#fff",
+    margin: { t: 25, l: 50, r: 20, b: 50 }
+  };
+
+  function yVals(subset) {
+    return subset.map(r => {
+      const v = r[numCol];
+      return (v !== null && v !== undefined && !isNaN(v)) ? +parseFloat(v).toFixed(1) : null;
+    });
+  }
+
+  // ---- cat0 ----
+  if (mode === "cat0") {
+    const pts = datNum0.filter(r => legis.includes(r["legis.annee"]))
+                       .sort((a, b) => a["legis.annee"] - b["legis.annee"]);
+    const trace = {
+      x: pts.map(r => r["legis.annee"]),
+      y: yVals(pts),
+      mode: "lines+markers",
+      type: "scatter",
+      line: { color: COLORS[0] },
+      marker: { color: COLORS[0], symbol: "circle", size: MARKER_SIZE },
+      hovertemplate: "%{x}<br>%{y}<extra></extra>"
+    };
+    const div = document.createElement("div");
+    panel.appendChild(div);
+    Plotly.newPlot(div, [trace], { ...baseLayout, height: 420, showlegend: false },
+                   { responsive: true });
+    return;
+  }
+
+  // ---- cat1 ----
+  if (mode === "cat1") {
+    const cat = cat1 === "Total" ? cat2 : cat1;
+    let pts = datCat1[cat].filter(r => legis.includes(r["legis.annee"]));
+    if (isCat) pts = pts.filter(r => String(r[cat]) !== "Total");
+
+    const vals = orderedVals(cat, pts).filter(v => !(isCat && v === "Total"));
+
+    const traces = vals.map((v, i) => {
+      const sub = pts.filter(r => String(r[cat]) === v)
+                     .sort((a, b) => a["legis.annee"] - b["legis.annee"]);
+      return {
+        x: sub.map(r => r["legis.annee"]),
+        y: yVals(sub),
+        name: v,
+        mode: "lines+markers",
+        type: "scatter",
+        line:   { color: COLORS[i % COLORS.length] },
+        marker: { color: COLORS[i % COLORS.length], symbol: MARKERS[i % MARKERS.length], size: MARKER_SIZE },
+        hovertemplate: `%{x}<br>${v}<br>%{y}<extra></extra>`
+      };
+    });
+    const div = document.createElement("div");
+    panel.appendChild(div);
+    Plotly.newPlot(div, traces, { ...baseLayout, height: 420, showlegend: true,
+      legend: { orientation: "v" } }, { responsive: true });
+    return;
+  }
+
+  // ---- cat2: Plotly subplots with shared interactive legend ----
+  let pts = datCat2[cat1][cat2].filter(r => legis.includes(r["legis.annee"]));
+  if (varNum === "pourcentages") pts = pts.filter(r => String(r[cat1]) !== "Total");
+
+  const cat2Vals = orderedVals(cat2, pts);
+  const cat1Vals = orderedVals(cat1, pts)
+    .filter(v => !(varNum === "pourcentages" && v === "Total"));
+
+  buildFacetFilter(cat2Vals, cat2);
+  const visibleCat2Vals = cat2Vals.filter(v => !hiddenFacets.has(v));
+
+  const nCols   = Math.min(3, visibleCat2Vals.length || 1);
+  const nRows   = Math.ceil(visibleCat2Vals.length / nCols);
+  const hGap    = 0.05;   // horizontal gap between columns (paper fraction)
+  const vGap    = 0.06;   // vertical gap between rows (paper fraction)
+  const titleFr = 0.03;   // fraction reserved above each plot for the facet label
+
+  const cellW = (1 - hGap * (nCols - 1)) / nCols;
+  const cellH = (1 - vGap * (nRows - 1)) / nRows;
+
+  // y range across visible facets only
+  const allY = pts
+    .filter(r => cat1Vals.includes(String(r[cat1])) && visibleCat2Vals.includes(String(r[cat2])))
+    .flatMap(r => {
+      const v = parseFloat(r[numCol]);
+      return isNaN(v) ? [] : [v];
+    });
+  const yMin = Math.min(...allY);
+  const yMax = Math.max(...allY);
+  const yPad   = (yMax - yMin) * 0.05 || 1;
+  const yRange = [yMin - yPad, yMax + yPad];
+
+  const allTraces   = [];
+  const annotations = [];
+  const layout = {
+    paper_bgcolor: "#fff",
+    plot_bgcolor:  "#fff",
+    showlegend: true,
+    legend: { x: 1.02, y: 0.5, yanchor: "middle" },
+    height: Math.max(nRows * 250 + 80, 100),
+    margin: { t: 20, l: 50, r: 160, b: 50 }
+  };
+
+  visibleCat2Vals.forEach((cv2, idx) => {
+    const col = idx % nCols;
+    const row = Math.floor(idx / nCols);
+    const n   = idx + 1;  // Plotly axis numbering (1-based)
+
+    const xStart   = col * (cellW + hGap);
+    const xEnd     = xStart + cellW;
+    const yTop     = 1 - row * (cellH + vGap);
+    const yBot     = yTop - cellH;
+    const plotYTop = yTop - titleFr;  // bottom of label strip = top of plot area
+
+    const xKey = n === 1 ? "xaxis"  : `xaxis${n}`;
+    const yKey = n === 1 ? "yaxis"  : `yaxis${n}`;
+    const xRef = n === 1 ? "x"      : `x${n}`;
+    const yRef = n === 1 ? "y"      : `y${n}`;
+
+    layout[xKey] = { domain: [xStart, xEnd], anchor: yRef, range: [legis[0] - 1, legis[legis.length - 1] + 1] };
+    layout[yKey] = { domain: [yBot, plotYTop], anchor: xRef, range: yRange };
+
+    // Facet title as a Plotly annotation (always reliable)
+    annotations.push({
+      text: `<b>${cv2}</b>`,
+      x: (xStart + xEnd) / 2,
+      y: (plotYTop + yTop) / 2,
+      xref: "paper", yref: "paper",
+      showarrow: false,
+      xanchor: "center", yanchor: "middle",
+      font: { size: 12, color: "#444" }
+    });
+
+    cat1Vals.forEach((cv1, i) => {
+      const sub = pts.filter(r => String(r[cat2]) === cv2 && String(r[cat1]) === cv1)
+                     .sort((a, b) => a["legis.annee"] - b["legis.annee"]);
+      allTraces.push({
+        x: sub.map(r => r["legis.annee"]),
+        y: yVals(sub),
+        name: cv1,
+        legendgroup: cv1,
+        showlegend: idx === 0,  // legend entry only from first facet; legendgroup links the rest
+        mode: "lines+markers",
+        type: "scatter",
+        xaxis: xRef, yaxis: yRef,
+        line:   { color: COLORS[i % COLORS.length] },
+        marker: { color: COLORS[i % COLORS.length], symbol: MARKERS[i % MARKERS.length], size: MARKER_SIZE },
+        hovertemplate: `%{x}<br>${cv1}<br>%{y}<extra></extra>`
+      });
+    });
+  });
+
+  layout.annotations = annotations;
+
+  const div = document.createElement("div");
+  panel.appendChild(div);
+  Plotly.newPlot(div, allTraces, layout, { responsive: true });
+}
+
+// ============================================================
+// DOWNLOAD CSV
+// ============================================================
+
+function downloadCSV() {
+  const varNum  = el("varNum").value;
+  const numStat = getNumStat();
+  const cat1    = el("varCat1").value;
+  const cat2    = el("varCat2").value;
+  const mode    = getMode();
+  const legis   = getSelectedLegis();
+  const transpos = el("transpose").checked;
+
+  if (legis.length === 0) return;
+
+  const isCat  = CAT_STATS.includes(varNum);
+  const numCol = isCat ? varNum : `${numStat}_${varNum}`;
+
+  let filename = "AN-table_" + varNum;
+  if (!isCat) filename += "_" + numStat;
+
+  function esc(v) {
+    const s = String(v ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  let rows = [];
+
+  if (mode === "cat0") {
+    filename += ".csv";
+    const vals = legis.map(l => {
+      const r = datNum0.find(r => r["legis.annee"] === l);
+      return r ? (r[numCol] ?? "") : "";
+    });
+    if (!transpos) {
+      rows = [legis.map(esc).join(","), vals.map(esc).join(",")];
+    } else {
+      rows = ["legis.annee,valeur", ...legis.map((l, i) => `${esc(l)},${esc(vals[i])}`)];
+    }
+  }
+
+  else if (mode === "cat1") {
+    const cat    = cat1 === "Total" ? cat2 : cat1;
+    filename    += `_${cat}.csv`;
+    const data   = datCat1[cat];
+    const subset = data.filter(r => legis.includes(r["legis.annee"]));
+    const catVals = orderedVals(cat, subset);
+
+    const matrix = catVals.map(cv =>
+      legis.map(l => {
+        const r = findRow(data, cat, cv, l);
+        if (!r) return "";
+        if (!isCat && r["effectifs"] === 0) return "";
+        return r[numCol] ?? "";
+      })
+    );
+
+    if (!transpos) {
+      rows = [
+        ["", ...legis].map(esc).join(","),
+        ...catVals.map((cv, i) => [esc(cv), ...matrix[i].map(esc)].join(","))
+      ];
+    } else {
+      rows = [
+        ["legis.annee", ...catVals].map(esc).join(","),
+        ...legis.map((l, li) => [esc(l), ...catVals.map((_, ci) => esc(matrix[ci][li]))].join(","))
+      ];
+    }
+  }
+
+  else { // cat2
+    filename += `_${cat1}_${cat2}.csv`;
+    const data = datCat2[cat1][cat2];
+    const allRowObjs = [];
+
+    legis.forEach(l => {
+      const legisData = data.filter(r => r["legis.annee"] === l);
+      const r1 = orderedVals(cat1, legisData);
+      const r2 = orderedVals(cat2, legisData);
+
+      r1.forEach(v1 => {
+        const obj = { legislature: l, [cat1]: v1 };
+        r2.forEach(v2 => {
+          const r = findRow2(data, cat1, v1, cat2, v2, l);
+          obj[v2] = r ? (r[numCol] ?? "") : "";
+        });
+        allRowObjs.push(obj);
+      });
+    });
+
+    if (allRowObjs.length > 0) {
+      const keys = Object.keys(allRowObjs[0]);
+      rows = [
+        keys.map(esc).join(","),
+        ...allRowObjs.map(o => keys.map(k => esc(o[k])).join(","))
+      ];
+    }
+  }
+
+  const csv  = "\ufeff" + rows.join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// UPDATE
+// ============================================================
+
+let currentTab = "graph";
+
+function update() {
+  const varNum = el("varNum").value;
+  el("numStatDiv").style.display = CAT_STATS.includes(varNum) ? "none" : "block";
+  el("contentTitle").textContent = computeTitle();
+
+  if (currentTab === "graph") renderGraph();
+  else renderTable();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+
+function initControls() {
+  // varNum
+  const varNumEl = el("varNum");
+  varNumEl.innerHTML = "";
+  const g1 = document.createElement("optgroup"); g1.label = "Statistiques";
+  [["Pourcentages","pourcentages"],["Effectifs","effectifs"]].forEach(([l,v]) =>
+    g1.appendChild(new Option(l, v)));
+  varNumEl.appendChild(g1);
+  const g2 = document.createElement("optgroup"); g2.label = "Variables numériques";
+  NUMVARS.forEach(v => g2.appendChild(new Option(VARNAMES[v] || v, v)));
+  varNumEl.appendChild(g2);
+  varNumEl.value = "pourcentages";
+
+  // cat selects
+  const catOpts = [["(Aucune)", "Total"], ...CATVARS.map(v => [VARNAMES[v] || v, v])];
+  ["varCat1","varCat2"].forEach((id, idx) => {
+    const s = el(id);
+    s.innerHTML = "";
+    catOpts.forEach(([l,v]) => s.appendChild(new Option(l, v)));
+    s.value = idx === 0 ? "genre" : "Total";
+  });
+
+  // legis
+  const legisSel = el("legis");
+  legisSel.innerHTML = "";
+  allLegis.forEach(y => {
+    const opt = new Option(String(y), String(y));
+    opt.selected = true;
+    legisSel.appendChild(opt);
+  });
+  legisSel.size = Math.max(allLegis.length, 3);
+}
+
+function initEvents() {
+  ["varNum","varCat1","varCat2","legis","transpose"].forEach(id =>
+    el(id).addEventListener("change", update));
+  document.querySelectorAll('input[name="numStat"]').forEach(r =>
+    r.addEventListener("change", update));
+
+  el("switchCats").addEventListener("click", () => {
+    const tmp = el("varCat1").value;
+    el("varCat1").value = el("varCat2").value;
+    el("varCat2").value = tmp;
+    update();
+  });
+
+  el("selectAllLegis").addEventListener("click", () => {
+    Array.from(el("legis").options).forEach(o => o.selected = true);
+    update();
+  });
+  el("deselectAllLegis").addEventListener("click", () => {
+    Array.from(el("legis").options).forEach(o => o.selected = false);
+    update();
+  });
+
+  el("dlTable").addEventListener("click", downloadCSV);
+
+  el("facetAll").addEventListener("click", () => {
+    hiddenFacets.clear();
+    renderGraph();
+  });
+  el("facetNone").addEventListener("click", () => {
+    lastCat2Vals.forEach(v => hiddenFacets.add(v));
+    renderGraph();
+  });
+
+  el("tabGraphBtn").addEventListener("click", () => {
+    currentTab = "graph";
+    el("tabGraphBtn").classList.add("active");
+    el("tabTableBtn").classList.remove("active");
+    el("graphPanel").style.display = "";
+    el("tablePanel").style.display = "none";
+    renderGraph();
+  });
+  el("tabTableBtn").addEventListener("click", () => {
+    currentTab = "table";
+    el("tabTableBtn").classList.add("active");
+    el("tabGraphBtn").classList.remove("active");
+    el("tablePanel").style.display = "";
+    el("graphPanel").style.display = "none";
+    el("facetFilterPanel").style.display = "none";
+    renderTable();
+  });
+}
+
+// ---- main ----
+(async () => {
+  try {
+    await loadAllData();
+    el("loading").style.display = "none";
+    initControls();
+    initEvents();
+    update();
+  } catch (err) {
+    el("loading").innerHTML = `
+      <div class="alert alert-danger m-4" style="max-width:600px">
+        <strong>Erreur de chargement des données.</strong><br><br>
+        Ce fichier doit être servi par un serveur HTTP local, pas ouvert directement
+        depuis le système de fichiers. Lancez depuis le dossier du projet&nbsp;:
+        <pre class="mt-2 mb-0">python3 -m http.server 8000</pre>
+        puis ouvrez <code>http://localhost:8000</code> dans votre navigateur.<br><br>
+        <small class="text-muted">Détail&nbsp;: ${err?.message || err}</small>
+      </div>`;
+  }
+})();
+</script>
+</body>
+</html>
