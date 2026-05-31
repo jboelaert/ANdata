@@ -297,14 +297,17 @@ function computeTitle() {
 // TABLE RENDERING
 // ============================================================
 
-function makeTable(colHeaders, rowData, rowLabels) {
+function makeTable(colHeaders, rowData, rowLabels, boldDir = "row") {
   // colHeaders : string[]
   // rowData    : string[][] (rows × cols)
   // rowLabels  : string[] | null  (if null, no row-label column)
+  // boldDir    : "row" → bold the Total row; "col" → bold the Total column
   const tbl = document.createElement("table");
   tbl.className = TABLE_CLASSES;
 
-  const totalColIdx = colHeaders.findIndex(h => String(h) === "Total");
+  const totalColIdx = boldDir === "col"
+    ? colHeaders.findIndex(h => String(h) === "Total")
+    : -1;
 
   // thead
   const thead = tbl.createTHead();
@@ -321,7 +324,7 @@ function makeTable(colHeaders, rowData, rowLabels) {
   const tbody = tbl.createTBody();
   rowData.forEach((row, i) => {
     const tr = tbody.insertRow();
-    const isTotal = rowLabels && String(rowLabels[i]) === "Total";
+    const isTotal = boldDir === "row" && rowLabels && String(rowLabels[i]) === "Total";
     if (rowLabels) {
       const td = tr.insertCell();
       td.textContent = rowLabels[i];
@@ -399,7 +402,7 @@ function renderTable() {
       wrap.appendChild(makeTable(legis.map(String), fmt, rows));
     } else {
       const t = legis.map((_, li) => rows.map((_, ri) => fmt[ri][li]));
-      wrap.appendChild(makeTable(rows, t, legis.map(String)));
+      wrap.appendChild(makeTable(rows, t, legis.map(String), "col"));
     }
     panel.appendChild(wrap);
     return;
@@ -433,7 +436,7 @@ function renderTable() {
       wrap.appendChild(makeTable(r2, fmt, r1));
     } else {
       const t = r2.map((_, ci) => r1.map((_, ri) => fmt[ri][ci]));
-      wrap.appendChild(makeTable(r1, t, r2));
+      wrap.appendChild(makeTable(r1, t, r2, "col"));
     }
     panel.appendChild(wrap);
   });
