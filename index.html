@@ -304,22 +304,34 @@ function makeTable(colHeaders, rowData, rowLabels) {
   const tbl = document.createElement("table");
   tbl.className = TABLE_CLASSES;
 
+  const totalColIdx = colHeaders.findIndex(h => String(h) === "Total");
+
   // thead
   const thead = tbl.createTHead();
   const hrow = thead.insertRow();
-  if (rowLabels) hrow.insertCell().outerHTML = "<th></th>";
-  colHeaders.forEach(h => { hrow.insertCell().outerHTML = `<th>${h}</th>`; });
+  if (rowLabels) { const th = document.createElement("th"); hrow.appendChild(th); }
+  colHeaders.forEach((h, i) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    if (i === totalColIdx) th.style.fontWeight = "700";
+    hrow.appendChild(th);
+  });
 
   // tbody
   const tbody = tbl.createTBody();
   rowData.forEach((row, i) => {
     const tr = tbody.insertRow();
+    const isTotal = rowLabels && String(rowLabels[i]) === "Total";
     if (rowLabels) {
       const td = tr.insertCell();
       td.textContent = rowLabels[i];
-      if (rowLabels[i] === "Total") td.style.fontWeight = "700";
+      if (isTotal) td.style.fontWeight = "700";
     }
-    row.forEach(cell => { tr.insertCell().textContent = cell; });
+    row.forEach((cell, j) => {
+      const td = tr.insertCell();
+      td.textContent = cell;
+      if (isTotal || j === totalColIdx) td.style.fontWeight = "700";
+    });
   });
 
   return tbl;
