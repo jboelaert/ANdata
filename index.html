@@ -559,7 +559,7 @@ function renderGraph() {
     const div = document.createElement("div");
     panel.appendChild(div);
     Plotly.newPlot(div, traces, { ...baseLayout, height: 420, showlegend: true,
-      legend: { orientation: "v" } }, { responsive: true });
+      legend: { orientation: "v", x: 1.02, y: 0.5, yanchor: "middle" } }, { responsive: true });
     return;
   }
 
