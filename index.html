@@ -521,9 +521,10 @@ function renderGraph() {
       y: yVals(pts),
       mode: "lines+markers",
       type: "scatter",
+      customdata: pts.map(r => r["effectifs"] ?? ""),
       line: { color: COLORS[0] },
       marker: { color: COLORS[0], symbol: "circle", size: MARKER_SIZE },
-      hovertemplate: "%{x}<br>%{y}<extra></extra>"
+      hovertemplate: "%{x}<br>%{y}<br>Effectifs: %{customdata}<extra></extra>"
     };
     const div = document.createElement("div");
     panel.appendChild(div);
@@ -549,9 +550,10 @@ function renderGraph() {
         name: v,
         mode: "lines+markers",
         type: "scatter",
+        customdata: sub.map(r => r["effectifs"] ?? ""),
         line:   { color: COLORS[i % COLORS.length] },
         marker: { color: COLORS[i % COLORS.length], symbol: MARKERS[i % MARKERS.length], size: MARKER_SIZE },
-        hovertemplate: `%{x}<br>${v}<br>%{y}<extra></extra>`
+        hovertemplate: `%{x}<br>${v}<br>%{y}<br>Effectifs: %{customdata}<extra></extra>`
       };
     });
     const div = document.createElement("div");
@@ -595,6 +597,7 @@ function renderGraph() {
 
   const allTraces   = [];
   const annotations = [];
+  const legendShown = new Set();
   const layout = {
     paper_bgcolor: "#fff",
     plot_bgcolor:  "#fff",
@@ -637,18 +640,21 @@ function renderGraph() {
     cat1Vals.forEach((cv1, i) => {
       const sub = pts.filter(r => String(r[cat2]) === cv2 && String(r[cat1]) === cv1)
                      .sort((a, b) => a["legis.annee"] - b["legis.annee"]);
+      const showLeg = sub.length > 0 && !legendShown.has(cv1);
+      if (showLeg) legendShown.add(cv1);
       allTraces.push({
         x: sub.map(r => r["legis.annee"]),
         y: yVals(sub),
         name: cv1,
         legendgroup: cv1,
-        showlegend: idx === 0,  // legend entry only from first facet; legendgroup links the rest
+        showlegend: showLeg,
         mode: "lines+markers",
         type: "scatter",
         xaxis: xRef, yaxis: yRef,
+        customdata: sub.map(r => r["effectifs"] ?? ""),
         line:   { color: COLORS[i % COLORS.length] },
         marker: { color: COLORS[i % COLORS.length], symbol: MARKERS[i % MARKERS.length], size: MARKER_SIZE },
-        hovertemplate: `%{x}<br>${cv1}<br>%{y}<extra></extra>`
+        hovertemplate: `%{x}<br>${cv1}<br>%{y}<br>Effectifs: %{customdata}<extra></extra>`
       });
     });
   });
