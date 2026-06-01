@@ -272,7 +272,7 @@ function computeTitle() {
 
   let t;
   if (CAT_STATS.includes(varNum)) {
-    t = varNum === "pourcentages" ? "Pourcentages" : "Effectifs";
+    t = varNum === "pourcentages" ? "Effectifs (%)" : "Effectifs bruts";
   } else {
     const statLbl = numStat === "mean" ? "Moyenne" : "Médiane";
     t = `${VARNAMES[varNum]} (${statLbl}),`;
@@ -796,8 +796,8 @@ function initControls() {
   // varNum
   const varNumEl = el("varNum");
   varNumEl.innerHTML = "";
-  const g1 = document.createElement("optgroup"); g1.label = "Statistiques";
-  [["Pourcentages","pourcentages"],["Effectifs","effectifs"]].forEach(([l,v]) =>
+  const g1 = document.createElement("optgroup"); g1.label = "Effectifs";
+  [["Effectifs (%)","pourcentages"],["Effectifs bruts","effectifs"]].forEach(([l,v]) =>
     g1.appendChild(new Option(l, v)));
   varNumEl.appendChild(g1);
   const g2 = document.createElement("optgroup"); g2.label = "Variables numériques";
