@@ -11,7 +11,6 @@
 
   "numvars": [
     "part.femmes",
-    "age",
     "part.pol",
     "part.cabcollab",
     "part.pcs.123",
@@ -19,7 +18,8 @@
     "part.elu.local",
     "part.mandat",
     "part.primos",
-    "duree.pol"
+    "duree.pol",
+    "age"
   ],
 
   "varnames": {
