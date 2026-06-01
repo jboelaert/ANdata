@@ -569,7 +569,8 @@ function renderGraph() {
 
   const cat2Vals = orderedVals(cat2, pts);
   const cat1Vals = orderedVals(cat1, pts)
-    .filter(v => !(varNum === "pourcentages" && v === "Total"));
+    .filter(v => !(varNum === "pourcentages" && v === "Total"))
+    .sort((a, b) => (a === "Total") - (b === "Total"));
 
   buildFacetFilter(cat2Vals, cat2);
   const visibleCat2Vals = cat2Vals.filter(v => !hiddenFacets.has(v));
